@@ -27,6 +27,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
       - name: Build
-        run: maturin develop
+        run: |
+          maturin build
+          pip install target/wheels/fastchrf-*
       - name: Test
         run: SKIP_SLOW_TESTS=True python -m unittest discover -s tests

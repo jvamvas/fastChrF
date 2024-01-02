@@ -142,6 +142,10 @@ Because $\overline{\textrm{ref}}$ is the same for every $\textrm{hyp}$, the numb
 
 ## Benchmarking
 
+* Up to 1024 medium-size hypotheses/references in German
+* Batch size 1
+* 64-core CPU
+
 |    n | [SacreBLEU](https://github.com/mjpost/sacrebleu) (ms) | `fastchrf.pairwise_chrf` (ms) | `fastchrf.aggregate_chrf` (ms) |
 |-----:|---------------:|----------------------------:|-----------------------------:|
 |    1 |        0.49 ms |                     0.27 ms |                      0.34 ms |
@@ -156,12 +160,9 @@ Because $\overline{\textrm{ref}}$ is the same for every $\textrm{hyp}$, the numb
 |  512 |    96216.99 ms |                  7465.06 ms |                     75.94 ms |
 | 1024 |   383965.22 ms |                 32262.39 ms |                    144.78 ms |
 
+<img src='benchmarking/results.png' width=500 alt="A line graph visualizing the result in the table">
 
-![A line graph visualizing the result in the table](benchmarking/results.png|width=450)
 
-* Up to 1024 medium-size hypotheses/references in German
-* Batch size 1
-* 64-core CPU
 
 > [!CAUTION]
 > fastChrF is not intended to be used as an evaluation metric. For evaluating NLG systems with the ChrF metric, use the implementation provided by [sacreBLEU](https://github.com/mjpost/sacrebleu) instead.
