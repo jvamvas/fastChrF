@@ -8,6 +8,7 @@ Fast computation of sentence-level ChrF, motivated by Minimum Bayes Risk decodin
 * **ChrF** ([Popović, 2015](https://aclanthology.org/W15-3049/)) is a string similarity metric based on character overlap.
 * **Minimum Bayes Risk (MBR) decoding** is a strategy for generating text from a language model that requires many pairwise comparisons of strings.
 
+In addition to the standard ChrF metric, we provide a streamlined variant that is faster to compute if there are many hypotheses and references, which is especially useful for MBR decoding. The streamlined variant is described in the research paper "Linear-time Minimum Bayes Risk Decoding with Reference Aggregation".
 
 ## Installation
 ```bash
@@ -34,10 +35,10 @@ print(np.array(pairwise_scores))
 * For each row in the batch, the function calculates the segment-level ChrF score between each hypothesis and each reference.
 * The output has shape `(batch_size, num_hypotheses, num_references)`.
 
-### Faster alternative: A streamlined ChrF variant for MBR
-
 `fastchrf.pairwise_chrf` compares each hypothesis to each reference.
 This is slow when the number of hypotheses and references is large, as is the case in MBR decoding.
+
+### Faster alternative: A streamlined ChrF variant for MBR
 `fastchrf.aggregate_chrf` computes a streamlined variant of ChrF that is faster to compute:
 
 ```python
@@ -53,7 +54,7 @@ print(np.array(aggregate_scores))
 
 * `aggregate_chrf` does not output individual scores for each reference. Instead, it outputs an **aggregate score across references**.
 * The output has shape `(batch_size, num_hypotheses)`.
-* The aggregate score is **not equal** to the average of the individual scores, nor is it equal to standard multi-reference ChrF. See below for a formal description.
+* The aggregate score is **not equal** to the average of the individual scores, nor is it equal to standard multi-reference ChrF. See our paper for a formal description.
 
 ## Function Signatures
 
@@ -85,61 +86,6 @@ def aggregate_chrf(hypotheses: List[List[str]], references: List[List[str]], cha
     """
 ```
 
-## Formal Description
-Sentence-level ChrF ([Popović, 2015](https://aclanthology.org/W15-3049/)) compares two strings by counting the number of character n-grams that they have in common.
-
-Given a hypothesis $\textrm{hyp}$ and a reference $\textrm{ref}$, ChrF internally represents them as bags of character n-grams.
-Think of a Python `Counter` object that maps each n-gram to its count in the string.
-
-Three operations on bags of n-grams are relevant for ChrF:
-
-1. **Cardinality**: The number of n-grams in the bag. This is denoted by $|\text{hyp}|$ and $|\text{ref}|$, respectively.
-2. **Intersection**: Creating a bag that for each n-gram contains the smaller of the two counts in the hypothesis and the reference. We denote this by $\textrm{hyp} \cap \textrm{ref}$.
-3. **Sum**: Creating a bag that for each n-gram contains the sum of the counts in the hypothesis and the reference. We denote this by $\textrm{hyp} \uplus \textrm{ref}$.
-
-The standard ChrF score is an F-score that combines precision and recall of character n-grams:
-
-```math
-\textrm{ChrF} = \frac{(1 + \beta^2) \cdot \textrm{ChrP} \cdot \textrm{ChrR}}{\beta^2 \cdot \textrm{ChrP} + \textrm{ChrR}},
-```
-
-where
-```math
-\text{ChrP} = \frac{\textrm{hyp} \cap \textrm{ref}}{|\textrm{hyp}|}
-```
-and
-```math
-\text{ChrR} = \frac{\textrm{hyp} \cap \textrm{ref}}{|\textrm{ref}|}.
-```
-(The parameter $\beta$ controls the relative importance of precision and recall.)
-
-### fastchrf.pairwise_chrf
-Calculating pairwise ChrF scores is relevant for sampling-based MBR [(Eikema & Aziz, 2022)](https://aclanthology.org/2022.emnlp-main.754/), where many samples and references are generated and then the sample with the highest expected utility is selected.
-
-If ChrF is used as the utility metric for MBR, the expected utility of $\textrm{hyp}$ is calculated as the average ChrF score between $\textrm{hyp}$ and the set of references $R$:
-
-```math
-\textrm{utility}_{\textrm{ChrF}}(\textrm{hyp}) = \frac{1}{|R|} \sum_{\textrm{ref} \in R} \textrm{ChrF}(\textrm{hyp}, \textrm{ref}).
-```
-
-Unfortunately, the number of intersections $\textrm{hyp} \cap \textrm{ref}$ that need to be calculated is quadratic in the number of hypotheses and references.
-
-### fastchrf.aggregate_chrf
-
-The idea behind `fastchrf.aggregate_chrf` is to first create an "average" reference $\overline{\textrm{ref}}$ by averaging the bags of n-grams in $R$:
-
-```math
-\overline{\textrm{ref}} = \frac{1}{|R|} \biguplus_{\textrm{ref} \in R} \textrm{ref}.
-```
-
-The utility is then calculated as the ChrF score between $\textrm{hyp}$ and $\overline{\textrm{ref}}$:
-
-```math
-\textrm{utility}_{\textrm{fastChrF}}(\textrm{hyp}) = \textrm{ChrF}(\textrm{hyp}, \overline{\textrm{ref}}).
-```
-
-Because $\overline{\textrm{ref}}$ is the same for every $\textrm{hyp}$, the number of bag-of-ngram operations that need to be performed is now linear in the number of hypotheses. However, note that this formulation clearly differs from textbook ChrF. The functions $`\textrm{utility}_{\textrm{ChrF}}`$ and $`\textrm{utility}_{\textrm{fastChrF}}`$ are not equivalent.
-
 ## Benchmarking
 
 * Up to 1024 medium-size hypotheses/references in German
@@ -162,7 +108,13 @@ Because $\overline{\textrm{ref}}$ is the same for every $\textrm{hyp}$, the numb
 
 <img src='benchmarking/results.png' width=500 alt="A line graph visualizing the result in the table">
 
+## Citation
+```bibtex
+tba
+```
 
+> [!NOTE]
+> The [ACL 2023 Policy on AI Writing Assistance](https://2023.aclweb.org/blog/ACL-2023-policy/) requires authors to disclose the use of AI code assistants. For this package, we used GitHub Copilot and GPT-4 to port Python code to Rust. We then used unit tests to ensure that the generated functions are equivalent to the original Python code. In addition, we adapted the [original sacreBLEU tests](https://github.com/mjpost/sacrebleu/blob/821f4b40b94e550e4cec84416dfcb584789d7af8/test/test_chrf.py) to make sure that the output of the generated functions matches the output of the sacreBLEU implementation of ChrF.
 
 > [!CAUTION]
 > fastChrF is not intended to be used as an evaluation metric. For evaluating NLG systems with the ChrF metric, use the implementation provided by [sacreBLEU](https://github.com/mjpost/sacrebleu) instead.
