@@ -8,7 +8,7 @@ Fast computation of sentence-level ChrF, motivated by Minimum Bayes Risk decodin
 * **ChrF** ([Popović, 2015](https://aclanthology.org/W15-3049/)) is a string similarity metric based on character overlap.
 * **Minimum Bayes Risk (MBR) decoding** is a strategy for generating text from a language model that requires many pairwise comparisons of strings.
 
-In addition to the standard ChrF metric, we provide a streamlined variant that is faster to compute if there are many hypotheses and references, which is especially useful for MBR decoding. The streamlined variant is described in the research paper "Linear-time Minimum Bayes Risk Decoding with Reference Aggregation".
+In addition to the standard ChrF metric, we provide a streamlined variant that is faster to compute if there are many hypotheses and references, which is especially useful for MBR decoding. The streamlined variant is described in the research paper ["Linear-time Minimum Bayes Risk Decoding with Reference Aggregation"](https://arxiv.org/abs/2402.04251).
 
 ## Installation
 ```bash
@@ -110,7 +110,14 @@ def aggregate_chrf(hypotheses: List[List[str]], references: List[List[str]], cha
 
 ## Citation
 ```bibtex
-tba
+@misc{vamvas-sennrich-2024-linear,
+      title={Linear-time Minimum Bayes Risk Decoding with Reference Aggregation},
+      author={Jannis Vamvas and Rico Sennrich},
+      year={2024},
+      eprint={2402.04251},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL}
+}
 ```
 
 > [!NOTE]
