@@ -138,6 +138,7 @@ def test_batching(hypotheses, references, expected_score):
     assert abs(fastchrf_scores[4][0][0] - expected_score) < EPSILON
 
 
+@pytest.mark.slow
 def test_real_data():
     from sacrebleu import DATASETS
     wmt22 = DATASETS['wmt22']
