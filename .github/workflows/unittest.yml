@@ -1,34 +1,35 @@
-name: unittest
+name: Tests
 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  build:
-
+  test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11"]
 
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v3
+      - uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.11"
+          cache: pip
       - name: Install Rust Toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          python -m pip install -r requirements-dev.txt
       - name: Build
         run: |
-          maturin build
-          pip install target/wheels/fastchrf-*
+          maturin build --interpreter python
+          python -m pip install target/wheels/fastchrf-*.whl
       - name: Test
-        run: SKIP_SLOW_TESTS=True python -m unittest discover -s tests
+        run: python -m pytest -m "not slow"

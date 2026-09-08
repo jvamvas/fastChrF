@@ -1,4 +1,4 @@
-[![Main](https://github.com/jvamvas/fastchrf/workflows/unittest/badge.svg)](https://github.com/jvamvas/fastchrf/actions/workflows/unittest.yml)
+[![Tests](https://github.com/jvamvas/fastChrF/actions/workflows/unittest.yml/badge.svg?branch=main)](https://github.com/jvamvas/fastChrF/actions/workflows/unittest.yml)
 [![PyPI](https://img.shields.io/pypi/v/fastchrf)](https://pypi.python.org/pypi/fastchrf/)
 
 # fastChrF
