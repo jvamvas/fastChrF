@@ -309,7 +309,7 @@ fn get_match_statistics(
 
 
 #[pymodule]
-fn fastchrf(_py: Python, m: &PyModule) -> PyResult<()> {
+fn fastchrf(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(pairwise_chrf_py, m)?)?;
     m.add_function(wrap_pyfunction!(aggregate_chrf_py, m)?)?;
     Ok(())
