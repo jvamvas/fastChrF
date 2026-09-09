@@ -110,8 +110,8 @@ fn chrf_pairwise_batched(
         .zip(references.par_iter())
         .map(|(hypothesis_row, reference_row)| {
             chrf_pairwise(
-                hypothesis_row.to_vec(),
-                reference_row.to_vec(),
+                hypothesis_row,
+                reference_row,
                 char_order,
                 beta,
                 remove_whitespace,
@@ -123,8 +123,8 @@ fn chrf_pairwise_batched(
 
 
 fn chrf_pairwise(
-    hypotheses: Vec<String>,
-    references: Vec<String>,
+    hypotheses: &[String],
+    references: &[String],
     char_order: usize,
     beta: f32,
     remove_whitespace: bool,
@@ -196,8 +196,8 @@ fn chrf_aggregate_batched(
         .zip(references.par_iter())
         .map(|(hypothesis_row, reference_row)| {
             chrf_aggregate(
-                hypothesis_row.to_vec(),
-                reference_row.to_vec(),
+                hypothesis_row,
+                reference_row,
                 char_order,
                 beta,
                 remove_whitespace,
@@ -209,8 +209,8 @@ fn chrf_aggregate_batched(
 
 
 fn chrf_aggregate(
-    hypotheses: Vec<String>,
-    references: Vec<String>,
+    hypotheses: &[String],
+    references: &[String],
     char_order: usize,
     beta: f32,
     remove_whitespace: bool,
