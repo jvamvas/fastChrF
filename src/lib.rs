@@ -133,52 +133,57 @@ fn chrf_pairwise(
     let num_hypotheses = hypotheses.len();
     let num_references = references.len();
     let mut metric_scores = vec![vec![0.0; num_references]; num_hypotheses];
-    let ngrams_per_hypothesis: Vec<Vec<HashMap<String, u32>>> = hypotheses.iter().map(|hypothesis| {
+    let ngrams_per_hypothesis: Vec<Vec<HashMap<String, u32>>> = hypotheses.par_iter().map(|hypothesis| {
         extract_all_char_ngrams(hypothesis, char_order, remove_whitespace)
     }).collect();
-    let ngrams_per_reference: Vec<Vec<HashMap<String, u32>>> = references.iter().map(|reference| {
+    let ngrams_per_reference: Vec<Vec<HashMap<String, u32>>> = references.par_iter().map(|reference| {
         extract_all_char_ngrams(reference, char_order, remove_whitespace)
     }).collect();
     let eps = 1e-16;
     let factor = beta.powi(2);
-    for j in 0..num_hypotheses {
-        for k in 0..num_references {
-            let hyp_ngrams = &ngrams_per_hypothesis[j];
-            let ref_ngrams = &ngrams_per_reference[k];
-            let mut score = 0.0;
-            let mut effective_order = 0;
-            let mut avg_prec = 0.0;
-            let mut avg_rec = 0.0;
-            for n in 0..char_order {
-                let (n_hyp, n_ref, n_match) = get_match_statistics(&hyp_ngrams[n], &ref_ngrams[n]);
-                let prec = n_match as f32 / n_hyp as f32;
-                let rec = n_match as f32 / n_ref as f32;
-                let denom = factor * prec + rec;
-                score += ((1.0 + factor) * prec * rec / denom).max(eps);
-                if n_hyp > 0 && n_ref > 0 {
-                    avg_prec += prec;
-                    avg_rec += rec;
-                    effective_order += 1;
+    // Each hypothesis owns one disjoint output row, so score the rows in
+    // parallel. Without this the whole hypothesis x reference loop ran on a
+    // single thread and `pairwise_chrf` only used more than one core when the
+    // batch dimension was greater than one.
+    metric_scores
+        .par_iter_mut()
+        .zip(ngrams_per_hypothesis.par_iter())
+        .for_each(|(row_scores, hyp_ngrams)| {
+            for (score_out, ref_ngrams) in row_scores.iter_mut().zip(ngrams_per_reference.iter()) {
+                let mut score = 0.0;
+                let mut effective_order = 0;
+                let mut avg_prec = 0.0;
+                let mut avg_rec = 0.0;
+                for n in 0..char_order {
+                    let (n_hyp, n_ref, n_match) = get_match_statistics(&hyp_ngrams[n], &ref_ngrams[n]);
+                    let prec = n_match as f32 / n_hyp as f32;
+                    let rec = n_match as f32 / n_ref as f32;
+                    let denom = factor * prec + rec;
+                    score += ((1.0 + factor) * prec * rec / denom).max(eps);
+                    if n_hyp > 0 && n_ref > 0 {
+                        avg_prec += prec;
+                        avg_rec += rec;
+                        effective_order += 1;
+                    }
+                }
+                if eps_smoothing {
+                    *score_out = 100.0 * score / char_order as f32;
+                    continue;
+                }
+                if effective_order == 0 {
+                    avg_prec = 0.0;
+                    avg_rec = 0.0;
+                } else {
+                    avg_prec /= effective_order as f32;
+                    avg_rec /= effective_order as f32;
+                }
+                if avg_prec + avg_rec > 0.0 {
+                    score = (1.0 + factor) * avg_prec * avg_rec;
+                    score /= (factor * avg_prec) + avg_rec;
+                    *score_out = 100.0 * score;
                 }
             }
-            if eps_smoothing {
-                metric_scores[j][k] = 100.0 * score / char_order as f32;
-                continue;
-            }
-            if effective_order == 0 {
-                avg_prec = 0.0;
-                avg_rec = 0.0;
-            } else {
-                avg_prec /= effective_order as f32;
-                avg_rec /= effective_order as f32;
-            }
-            if avg_prec + avg_rec > 0.0 {
-                score = (1.0 + factor) * avg_prec * avg_rec;
-                score /= (factor * avg_prec) + avg_rec;
-                metric_scores[j][k] = 100.0 * score;
-            }
-        }
-    }
+        });
     metric_scores
 }
 
