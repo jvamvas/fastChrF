@@ -25,3 +25,12 @@ def test_more_reference_rows_raises(func):
     # Used to silently discard the surplus reference rows.
     with pytest.raises(ValueError, match="same batch size"):
         func([["a"]], [["a"], ["b"], ["c"]])
+
+
+@pytest.mark.parametrize("func", FUNCTIONS)
+def test_zero_char_order_raises(func):
+    # Used to return NaN via 0.0 / 0.0 on the eps_smoothing path.
+    with pytest.raises(ValueError, match="char_order"):
+        func([["a"]], [["a"]], char_order=0)
+    with pytest.raises(ValueError, match="char_order"):
+        func([["a"]], [["a"]], char_order=0, eps_smoothing=True)

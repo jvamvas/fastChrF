@@ -31,7 +31,7 @@ fn pairwise_chrf_py(
     remove_whitespace: bool,
     eps_smoothing: bool,
 ) -> PyResult<Vec<Vec<Vec<f64>>>> {
-    validate_batch(&hypotheses, &references)?;
+    validate_args(&hypotheses, &references, char_order)?;
     // The batch is already copied into owned Rust values and the worker threads
     // never touch Python, so hold no GIL while scoring: a large call would
     // otherwise block every other Python thread for its whole duration.
@@ -67,7 +67,7 @@ fn aggregate_chrf_py(
     remove_whitespace: bool,
     eps_smoothing: bool,
 ) -> PyResult<Vec<Vec<f64>>> {
-    validate_batch(&hypotheses, &references)?;
+    validate_args(&hypotheses, &references, char_order)?;
     // The batch is already copied into owned Rust values and the worker threads
     // never touch Python, so hold no GIL while scoring: a large call would
     // otherwise block every other Python thread for its whole duration.
@@ -75,12 +75,22 @@ fn aggregate_chrf_py(
 }
 
 
-/// Checks the batch dimensions that both entry points rely on.
+/// Checks the arguments that both entry points rely on.
 ///
 /// `chrf_*_batched` iterate over the hypothesis rows and index `references` with
 /// the same offset, so a shorter `references` would panic and a longer one would
 /// be silently truncated. Reject both here instead.
-fn validate_batch(hypotheses: &[Vec<String>], references: &[Vec<String>]) -> PyResult<()> {
+fn validate_args(
+    hypotheses: &[Vec<String>],
+    references: &[Vec<String>],
+    char_order: usize,
+) -> PyResult<()> {
+    // The eps_smoothing branch divides the accumulated score by char_order.
+    if char_order == 0 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "char_order must be at least 1",
+        ));
+    }
     if hypotheses.is_empty() || references.is_empty() {
         return Err(pyo3::exceptions::PyValueError::new_err(
             "hypotheses and references must be non-empty",
@@ -156,10 +166,13 @@ fn chrf_pairwise(
                 let mut avg_rec = 0.0;
                 for n in 0..char_order {
                     let (n_hyp, n_ref, n_match) = get_match_statistics(&hyp_ngrams[n], &ref_ngrams[n]);
-                    let prec = n_match as f64 / n_hyp as f64;
-                    let rec = n_match as f64 / n_ref as f64;
+                    // chrF++.py style EPS smoothing, mirroring sacreBLEU's `_compute_f_score`.
+                    // Falling back to eps explicitly avoids the 0/0 divisions the previous
+                    // formulation relied on `f64::max` to launder back into eps.
+                    let prec = if n_hyp > 0 { n_match as f64 / n_hyp as f64 } else { eps };
+                    let rec = if n_ref > 0 { n_match as f64 / n_ref as f64 } else { eps };
                     let denom = factor * prec + rec;
-                    score += ((1.0 + factor) * prec * rec / denom).max(eps);
+                    score += if denom > 0.0 { (1.0 + factor) * prec * rec / denom } else { eps };
                     if n_hyp > 0 && n_ref > 0 {
                         avg_prec += prec;
                         avg_rec += rec;
@@ -253,10 +266,11 @@ fn chrf_aggregate(
             }).collect::<Vec<HashMap<String, u32>>>();
         for n in 0..char_order {
             let (n_hyp, n_ref, n_match) = get_match_statistics(&hyp_ngrams[n], &ngrams_for_all_references[n]);
-            let prec = n_match as f64 / n_hyp as f64;
-            let rec = n_match as f64 / n_ref as f64;
+            // chrF++.py style EPS smoothing, mirroring sacreBLEU's `_compute_f_score`.
+            let prec = if n_hyp > 0 { n_match as f64 / n_hyp as f64 } else { eps };
+            let rec = if n_ref > 0 { n_match as f64 / n_ref as f64 } else { eps };
             let denom = factor * prec + rec;
-            score += ((1.0 + factor) * prec * rec / denom).max(eps);
+            score += if denom > 0.0 { (1.0 + factor) * prec * rec / denom } else { eps };
             if n_hyp > 0 && n_ref > 0 {
                 avg_prec += prec;
                 avg_rec += rec;
