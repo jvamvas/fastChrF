@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 
 use pyo3::prelude::*;
 use rayon::prelude::*;
@@ -106,23 +105,20 @@ fn chrf_pairwise_batched(
     remove_whitespace: bool,
     eps_smoothing: bool,
 ) -> Vec<Vec<Vec<f32>>> {
-    let batch_size = hypotheses.len();
-    let num_hypotheses = hypotheses[0].len();
-    let num_references = references[0].len();
-    let metric_scores = Arc::new(Mutex::new(vec![vec![vec![0.0; num_references]; num_hypotheses]; batch_size]));
-    hypotheses.par_iter().enumerate().for_each(|(i, row)| {
-        let row_scores = chrf_pairwise(
-            row.to_vec(),
-            references[i].to_vec(),
-            char_order,
-            beta,
-            remove_whitespace,
-            eps_smoothing,
-        );
-        let mut scores = metric_scores.lock().unwrap();
-        scores[i] = row_scores;
-    });
-    Arc::try_unwrap(metric_scores).unwrap().into_inner().unwrap()
+    hypotheses
+        .par_iter()
+        .zip(references.par_iter())
+        .map(|(hypothesis_row, reference_row)| {
+            chrf_pairwise(
+                hypothesis_row.to_vec(),
+                reference_row.to_vec(),
+                char_order,
+                beta,
+                remove_whitespace,
+                eps_smoothing,
+            )
+        })
+        .collect()
 }
 
 
@@ -195,22 +191,20 @@ fn chrf_aggregate_batched(
     remove_whitespace: bool,
     eps_smoothing: bool,
 ) -> Vec<Vec<f32>> {
-    let batch_size = hypotheses.len();
-    let num_hypotheses = hypotheses[0].len();
-    let metric_scores = Arc::new(Mutex::new(vec![vec![0.0; num_hypotheses]; batch_size]));
-    hypotheses.par_iter().enumerate().for_each(|(i, row)| {
-        let row_scores = chrf_aggregate(
-            row.to_vec(),
-            references[i].to_vec(),
-            char_order,
-            beta,
-            remove_whitespace,
-            eps_smoothing,
-        );
-        let mut scores = metric_scores.lock().unwrap();
-        scores[i] = row_scores;
-    });
-    Arc::try_unwrap(metric_scores).unwrap().into_inner().unwrap()
+    hypotheses
+        .par_iter()
+        .zip(references.par_iter())
+        .map(|(hypothesis_row, reference_row)| {
+            chrf_aggregate(
+                hypothesis_row.to_vec(),
+                reference_row.to_vec(),
+                char_order,
+                beta,
+                remove_whitespace,
+                eps_smoothing,
+            )
+        })
+        .collect()
 }
 
 
@@ -222,9 +216,7 @@ fn chrf_aggregate(
     remove_whitespace: bool,
     eps_smoothing: bool,
 ) -> Vec<f32> {
-    let num_hypotheses = hypotheses.len();
     let num_references = references.len() as u32;
-    let metric_scores = Arc::new(Mutex::new(vec![0.0; num_hypotheses]));
 
     // Extract ngrams for all references and sum up counts over all references
     let ngrams_for_all_references: Vec<HashMap<String, u32>> = references
@@ -241,13 +233,13 @@ fn chrf_aggregate(
 
     let eps = 1e-16;
     let factor = beta.powi(2);
-    hypotheses.par_iter().enumerate().for_each(|(j, _)| {
+    hypotheses.par_iter().map(|hypothesis| {
         let mut score = 0.0;
         let mut effective_order = 0;
         let mut avg_prec = 0.0;
         let mut avg_rec = 0.0;
         // Extract hypothesis ngrams and multiply counts by the number of references
-        let hyp_ngrams = extract_all_char_ngrams(&hypotheses[j], char_order, remove_whitespace)
+        let hyp_ngrams = extract_all_char_ngrams(hypothesis, char_order, remove_whitespace)
             .into_iter().map(|mut ngram_map| {
                 for value in ngram_map.values_mut() {
                     *value *= num_references;
@@ -267,9 +259,7 @@ fn chrf_aggregate(
             }
         }
         if eps_smoothing {
-            let mut scores = metric_scores.lock().unwrap();
-            scores[j] = 100.0 * score / char_order as f32;
-            return;
+            return 100.0 * score / char_order as f32;
         }
         if effective_order == 0 {
             avg_prec = 0.0;
@@ -281,11 +271,11 @@ fn chrf_aggregate(
         if avg_prec + avg_rec > 0.0 {
             score = (1.0 + factor) * avg_prec * avg_rec;
             score /= (factor * avg_prec) + avg_rec;
-            let mut scores = metric_scores.lock().unwrap();
-            scores[j] = 100.0 * score;
+            100.0 * score
+        } else {
+            0.0
         }
-    });
-    Arc::try_unwrap(metric_scores).unwrap().into_inner().unwrap()
+    }).collect()
 }
 
 
