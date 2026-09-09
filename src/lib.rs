@@ -24,6 +24,7 @@ remove_whitespace = true,
 eps_smoothing = false
 ))]
 fn pairwise_chrf_py(
+    py: Python<'_>,
     hypotheses: Vec<Vec<String>>,
     references: Vec<Vec<String>>,
     char_order: usize,
@@ -32,7 +33,10 @@ fn pairwise_chrf_py(
     eps_smoothing: bool,
 ) -> PyResult<Vec<Vec<Vec<f32>>>> {
     validate_batch(&hypotheses, &references)?;
-    Ok(chrf_pairwise_batched(hypotheses, references, char_order, beta, remove_whitespace, eps_smoothing))
+    // The batch is already copied into owned Rust values and the worker threads
+    // never touch Python, so hold no GIL while scoring: a large call would
+    // otherwise block every other Python thread for its whole duration.
+    Ok(py.detach(|| chrf_pairwise_batched(hypotheses, references, char_order, beta, remove_whitespace, eps_smoothing)))
 }
 
 
@@ -56,6 +60,7 @@ remove_whitespace = true,
 eps_smoothing = false
 ))]
 fn aggregate_chrf_py(
+    py: Python<'_>,
     hypotheses: Vec<Vec<String>>,
     references: Vec<Vec<String>>,
     char_order: usize,
@@ -64,7 +69,10 @@ fn aggregate_chrf_py(
     eps_smoothing: bool,
 ) -> PyResult<Vec<Vec<f32>>> {
     validate_batch(&hypotheses, &references)?;
-    Ok(chrf_aggregate_batched(hypotheses, references, char_order, beta, remove_whitespace, eps_smoothing))
+    // The batch is already copied into owned Rust values and the worker threads
+    // never touch Python, so hold no GIL while scoring: a large call would
+    // otherwise block every other Python thread for its whole duration.
+    Ok(py.detach(|| chrf_aggregate_batched(hypotheses, references, char_order, beta, remove_whitespace, eps_smoothing)))
 }
 
 
