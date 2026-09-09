@@ -32,9 +32,6 @@ fn pairwise_chrf_py(
     eps_smoothing: bool,
 ) -> PyResult<Vec<Vec<Vec<f64>>>> {
     validate_args(&hypotheses, &references, char_order)?;
-    // The batch is already copied into owned Rust values and the worker threads
-    // never touch Python, so hold no GIL while scoring: a large call would
-    // otherwise block every other Python thread for its whole duration.
     Ok(py.detach(|| chrf_pairwise_batched(hypotheses, references, char_order, beta, remove_whitespace, eps_smoothing)))
 }
 
@@ -68,24 +65,15 @@ fn aggregate_chrf_py(
     eps_smoothing: bool,
 ) -> PyResult<Vec<Vec<f64>>> {
     validate_args(&hypotheses, &references, char_order)?;
-    // The batch is already copied into owned Rust values and the worker threads
-    // never touch Python, so hold no GIL while scoring: a large call would
-    // otherwise block every other Python thread for its whole duration.
     Ok(py.detach(|| chrf_aggregate_batched(hypotheses, references, char_order, beta, remove_whitespace, eps_smoothing)))
 }
 
 
-/// Checks the arguments that both entry points rely on.
-///
-/// `chrf_*_batched` iterate over the hypothesis rows and index `references` with
-/// the same offset, so a shorter `references` would panic and a longer one would
-/// be silently truncated. Reject both here instead.
 fn validate_args(
     hypotheses: &[Vec<String>],
     references: &[Vec<String>],
     char_order: usize,
 ) -> PyResult<()> {
-    // The eps_smoothing branch divides the accumulated score by char_order.
     if char_order == 0 {
         return Err(pyo3::exceptions::PyValueError::new_err(
             "char_order must be at least 1",
@@ -151,10 +139,6 @@ fn chrf_pairwise(
     }).collect();
     let eps = 1e-16;
     let factor = beta.powi(2);
-    // Each hypothesis owns one disjoint output row, so score the rows in
-    // parallel. Without this the whole hypothesis x reference loop ran on a
-    // single thread and `pairwise_chrf` only used more than one core when the
-    // batch dimension was greater than one.
     metric_scores
         .par_iter_mut()
         .zip(ngrams_per_hypothesis.par_iter())
@@ -166,9 +150,6 @@ fn chrf_pairwise(
                 let mut avg_rec = 0.0;
                 for n in 0..char_order {
                     let (n_hyp, n_ref, n_match) = get_match_statistics(&hyp_ngrams[n], &ref_ngrams[n]);
-                    // chrF++.py style EPS smoothing, mirroring sacreBLEU's `_compute_f_score`.
-                    // Falling back to eps explicitly avoids the 0/0 divisions the previous
-                    // formulation relied on `f64::max` to launder back into eps.
                     let prec = if n_hyp > 0 { n_match as f64 / n_hyp as f64 } else { eps };
                     let rec = if n_ref > 0 { n_match as f64 / n_ref as f64 } else { eps };
                     let denom = factor * prec + rec;
@@ -266,7 +247,6 @@ fn chrf_aggregate(
             }).collect::<Vec<HashMap<String, u32>>>();
         for n in 0..char_order {
             let (n_hyp, n_ref, n_match) = get_match_statistics(&hyp_ngrams[n], &ngrams_for_all_references[n]);
-            // chrF++.py style EPS smoothing, mirroring sacreBLEU's `_compute_f_score`.
             let prec = if n_hyp > 0 { n_match as f64 / n_hyp as f64 } else { eps };
             let rec = if n_ref > 0 { n_match as f64 / n_ref as f64 } else { eps };
             let denom = factor * prec + rec;

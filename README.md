@@ -21,7 +21,6 @@ Use the `fastchrf.pairwise_chrf` function to compute the ChrF score between each
 
 ```python
 import numpy as np
-
 from fastchrf import pairwise_chrf
 
 hypotheses = ["The cat sat on the mat.", "The cat sat on the hat."]
@@ -45,7 +44,6 @@ This is slow when the number of hypotheses and references is large, as is the ca
 
 ```python
 import numpy as np
-
 from fastchrf import aggregate_chrf
 
 hypotheses = ["The cat sat on the mat.", "The cat sat on the hat."]
@@ -95,6 +93,7 @@ def aggregate_chrf(hypotheses: List[List[str]], references: List[List[str]], cha
 * Up to 1024 medium-size hypotheses/references in German
 * Batch size 1
 * 64-core CPU
+* `fastchrf==0.1.0`
 
 |    n | [SacreBLEU](https://github.com/mjpost/sacrebleu) (ms) | `fastchrf.pairwise_chrf` (ms) | `fastchrf.aggregate_chrf` (ms) |
 |-----:|---------------:|----------------------------:|-----------------------------:|
