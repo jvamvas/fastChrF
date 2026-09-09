@@ -4,7 +4,13 @@ build-backend = "maturin"
 
 [project]
 name = "fastchrf"
+description = "Fast computation of sentence-level ChrF, motivated by Minimum Bayes Risk decoding"
+readme = "README.md"
 requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Jannis Vamvas" }]
+keywords = ["chrf", "mbr", "minimum-bayes-risk", "machine-translation", "nlp"]
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: 3.10",
@@ -16,6 +22,12 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/jvamvas/fastChrF"
+Repository = "https://github.com/jvamvas/fastChrF"
+Issues = "https://github.com/jvamvas/fastChrF/issues"
+Paper = "https://arxiv.org/abs/2402.04251"
 
 [tool.maturin]
 features = ["pyo3/extension-module"]

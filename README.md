@@ -109,7 +109,7 @@ def aggregate_chrf(hypotheses: List[List[str]], references: List[List[str]], cha
 |  512 |    96216.99 ms |                  7465.06 ms |                     75.94 ms |
 | 1024 |   383965.22 ms |                 32262.39 ms |                    144.78 ms |
 
-<img src='benchmarking/results.png' width=500 alt="A line graph visualizing the result in the table">
+<img src='https://raw.githubusercontent.com/jvamvas/fastChrF/main/benchmarking/results.png' width=500 alt="A line graph visualizing the result in the table">
 
 ## Citation
 ```bibtex
