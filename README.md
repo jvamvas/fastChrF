@@ -20,6 +20,7 @@ pip install fastchrf
 Use the `fastchrf.pairwise_chrf` function to compute the ChrF score between each hypothesis and each reference in a set of hypotheses and references:
 
 ```python
+import numpy as np
 from fastchrf import pairwise_chrf
 
 hypotheses = ["The cat sat on the mat.", "The cat sat on the hat."]
@@ -27,8 +28,8 @@ references = ["The cat sat on the mat.", "The fat cat sat on the mat.", "A cat s
 pairwise_scores = pairwise_chrf([hypotheses], [references])
 
 print(np.array(pairwise_scores))
-# [[[100.          74.6319046   55.77074432]
-#   [ 79.65373993  57.15287399  50.72182846]]]
+# [[[100.          74.63190449  55.77074554]
+#   [ 79.65373543  57.15287549  50.72182797]]]
 ```
 
 * `pairwise_chrf` works with a **batch dimension**, so pass a list of lists of hypotheses and a list of lists of references.
@@ -42,6 +43,7 @@ This is slow when the number of hypotheses and references is large, as is the ca
 `fastchrf.aggregate_chrf` computes a streamlined variant of ChrF that is faster to compute:
 
 ```python
+import numpy as np
 from fastchrf import aggregate_chrf
 
 hypotheses = ["The cat sat on the mat.", "The cat sat on the hat."]
@@ -49,7 +51,7 @@ references = ["The cat sat on the mat.", "The fat cat sat on the mat.", "A cat s
 aggregate_scores = aggregate_chrf([hypotheses], [references])
 
 print(np.array(aggregate_scores))
-# [[78.56389618 63.3719368 ]]
+# [[78.56389721 63.37194047]]
 ```
 
 * `aggregate_chrf` does not output individual scores for each reference. Instead, it outputs an **aggregate score across references**.
@@ -82,7 +84,7 @@ def aggregate_chrf(hypotheses: List[List[str]], references: List[List[str]], cha
     :param beta: A float indicating the beta parameter of the F-score. Defaults to 2.0.
     :param remove_whitespace: If `True`, remove whitespace when extracting character n-grams. Defaults to `True`.
     :param eps_smoothing: If `True`, add epsilon smoothing to the ChrF score. Defaults to `False`.
-    :return: A list of lists of lists of floats.
+    :return: A list of lists of floats.
     """
 ```
 
@@ -91,6 +93,7 @@ def aggregate_chrf(hypotheses: List[List[str]], references: List[List[str]], cha
 * Up to 1024 medium-size hypotheses/references in German
 * Batch size 1
 * 64-core CPU
+* `fastchrf==0.1.0`
 
 |    n | [SacreBLEU](https://github.com/mjpost/sacrebleu) (ms) | `fastchrf.pairwise_chrf` (ms) | `fastchrf.aggregate_chrf` (ms) |
 |-----:|---------------:|----------------------------:|-----------------------------:|

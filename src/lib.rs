@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 
 use pyo3::prelude::*;
 use rayon::prelude::*;
@@ -24,17 +23,16 @@ remove_whitespace = true,
 eps_smoothing = false
 ))]
 fn pairwise_chrf_py(
+    py: Python<'_>,
     hypotheses: Vec<Vec<String>>,
     references: Vec<Vec<String>>,
     char_order: usize,
-    beta: f32,
+    beta: f64,
     remove_whitespace: bool,
     eps_smoothing: bool,
-) -> PyResult<Vec<Vec<Vec<f32>>>> {
-    if hypotheses.len() == 0 || references.len() == 0 {
-        return Err(pyo3::exceptions::PyValueError::new_err("hypotheses and references must be non-empty"));
-    }
-    Ok(chrf_pairwise_batched(hypotheses, references, char_order, beta, remove_whitespace, eps_smoothing))
+) -> PyResult<Vec<Vec<Vec<f64>>>> {
+    validate_args(&hypotheses, &references, char_order)?;
+    Ok(py.detach(|| chrf_pairwise_batched(hypotheses, references, char_order, beta, remove_whitespace, eps_smoothing)))
 }
 
 
@@ -46,7 +44,7 @@ fn pairwise_chrf_py(
 /// :param beta: A float indicating the beta parameter of the F-score. Defaults to 2.0.
 /// :param remove_whitespace: If `True`, remove whitespace when extracting character n-grams. Defaults to `True`.
 /// :param eps_smoothing: If `True`, add epsilon smoothing to the ChrF score. Defaults to `False`.
-/// :return: A list of lists of lists of floats.
+/// :return: A list of lists of floats.
 #[pyfunction]
 #[pyo3(name = "aggregate_chrf")]
 #[pyo3(signature = (
@@ -58,17 +56,42 @@ remove_whitespace = true,
 eps_smoothing = false
 ))]
 fn aggregate_chrf_py(
+    py: Python<'_>,
     hypotheses: Vec<Vec<String>>,
     references: Vec<Vec<String>>,
     char_order: usize,
-    beta: f32,
+    beta: f64,
     remove_whitespace: bool,
     eps_smoothing: bool,
-) -> PyResult<Vec<Vec<f32>>> {
-    if hypotheses.len() == 0 || references.len() == 0 {
-        return Err(pyo3::exceptions::PyValueError::new_err("hypotheses and references must be non-empty"));
+) -> PyResult<Vec<Vec<f64>>> {
+    validate_args(&hypotheses, &references, char_order)?;
+    Ok(py.detach(|| chrf_aggregate_batched(hypotheses, references, char_order, beta, remove_whitespace, eps_smoothing)))
+}
+
+
+fn validate_args(
+    hypotheses: &[Vec<String>],
+    references: &[Vec<String>],
+    char_order: usize,
+) -> PyResult<()> {
+    if char_order == 0 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "char_order must be at least 1",
+        ));
     }
-    Ok(chrf_aggregate_batched(hypotheses, references, char_order, beta, remove_whitespace, eps_smoothing))
+    if hypotheses.is_empty() || references.is_empty() {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "hypotheses and references must be non-empty",
+        ));
+    }
+    if hypotheses.len() != references.len() {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "hypotheses and references must have the same batch size, but got {} and {}",
+            hypotheses.len(),
+            references.len(),
+        )));
+    }
+    Ok(())
 }
 
 
@@ -76,87 +99,85 @@ fn chrf_pairwise_batched(
     hypotheses: Vec<Vec<String>>,
     references: Vec<Vec<String>>,
     char_order: usize,
-    beta: f32,
+    beta: f64,
     remove_whitespace: bool,
     eps_smoothing: bool,
-) -> Vec<Vec<Vec<f32>>> {
-    let batch_size = hypotheses.len();
-    let num_hypotheses = hypotheses[0].len();
-    let num_references = references[0].len();
-    let metric_scores = Arc::new(Mutex::new(vec![vec![vec![0.0; num_references]; num_hypotheses]; batch_size]));
-    hypotheses.par_iter().enumerate().for_each(|(i, row)| {
-        let row_scores = chrf_pairwise(
-            row.to_vec(),
-            references[i].to_vec(),
-            char_order,
-            beta,
-            remove_whitespace,
-            eps_smoothing,
-        );
-        let mut scores = metric_scores.lock().unwrap();
-        scores[i] = row_scores;
-    });
-    Arc::try_unwrap(metric_scores).unwrap().into_inner().unwrap()
+) -> Vec<Vec<Vec<f64>>> {
+    hypotheses
+        .par_iter()
+        .zip(references.par_iter())
+        .map(|(hypothesis_row, reference_row)| {
+            chrf_pairwise(
+                hypothesis_row,
+                reference_row,
+                char_order,
+                beta,
+                remove_whitespace,
+                eps_smoothing,
+            )
+        })
+        .collect()
 }
 
 
 fn chrf_pairwise(
-    hypotheses: Vec<String>,
-    references: Vec<String>,
+    hypotheses: &[String],
+    references: &[String],
     char_order: usize,
-    beta: f32,
+    beta: f64,
     remove_whitespace: bool,
     eps_smoothing: bool,
-) -> Vec<Vec<f32>> {
+) -> Vec<Vec<f64>> {
     let num_hypotheses = hypotheses.len();
     let num_references = references.len();
     let mut metric_scores = vec![vec![0.0; num_references]; num_hypotheses];
-    let ngrams_per_hypothesis: Vec<Vec<HashMap<String, u32>>> = hypotheses.iter().map(|hypothesis| {
+    let ngrams_per_hypothesis: Vec<Vec<HashMap<String, u32>>> = hypotheses.par_iter().map(|hypothesis| {
         extract_all_char_ngrams(hypothesis, char_order, remove_whitespace)
     }).collect();
-    let ngrams_per_reference: Vec<Vec<HashMap<String, u32>>> = references.iter().map(|reference| {
+    let ngrams_per_reference: Vec<Vec<HashMap<String, u32>>> = references.par_iter().map(|reference| {
         extract_all_char_ngrams(reference, char_order, remove_whitespace)
     }).collect();
     let eps = 1e-16;
     let factor = beta.powi(2);
-    for j in 0..num_hypotheses {
-        for k in 0..num_references {
-            let hyp_ngrams = &ngrams_per_hypothesis[j];
-            let ref_ngrams = &ngrams_per_reference[k];
-            let mut score = 0.0;
-            let mut effective_order = 0;
-            let mut avg_prec = 0.0;
-            let mut avg_rec = 0.0;
-            for n in 0..char_order {
-                let (n_hyp, n_ref, n_match) = get_match_statistics(&hyp_ngrams[n], &ref_ngrams[n]);
-                let prec = n_match as f32 / n_hyp as f32;
-                let rec = n_match as f32 / n_ref as f32;
-                let denom = factor * prec + rec;
-                score += ((1.0 + factor) * prec * rec / denom).max(eps);
-                if n_hyp > 0 && n_ref > 0 {
-                    avg_prec += prec;
-                    avg_rec += rec;
-                    effective_order += 1;
+    metric_scores
+        .par_iter_mut()
+        .zip(ngrams_per_hypothesis.par_iter())
+        .for_each(|(row_scores, hyp_ngrams)| {
+            for (score_out, ref_ngrams) in row_scores.iter_mut().zip(ngrams_per_reference.iter()) {
+                let mut score = 0.0;
+                let mut effective_order = 0;
+                let mut avg_prec = 0.0;
+                let mut avg_rec = 0.0;
+                for n in 0..char_order {
+                    let (n_hyp, n_ref, n_match) = get_match_statistics(&hyp_ngrams[n], &ref_ngrams[n]);
+                    let prec = if n_hyp > 0 { n_match as f64 / n_hyp as f64 } else { eps };
+                    let rec = if n_ref > 0 { n_match as f64 / n_ref as f64 } else { eps };
+                    let denom = factor * prec + rec;
+                    score += if denom > 0.0 { (1.0 + factor) * prec * rec / denom } else { eps };
+                    if n_hyp > 0 && n_ref > 0 {
+                        avg_prec += prec;
+                        avg_rec += rec;
+                        effective_order += 1;
+                    }
+                }
+                if eps_smoothing {
+                    *score_out = 100.0 * score / char_order as f64;
+                    continue;
+                }
+                if effective_order == 0 {
+                    avg_prec = 0.0;
+                    avg_rec = 0.0;
+                } else {
+                    avg_prec /= effective_order as f64;
+                    avg_rec /= effective_order as f64;
+                }
+                if avg_prec + avg_rec > 0.0 {
+                    score = (1.0 + factor) * avg_prec * avg_rec;
+                    score /= (factor * avg_prec) + avg_rec;
+                    *score_out = 100.0 * score;
                 }
             }
-            if eps_smoothing {
-                metric_scores[j][k] = 100.0 * score / char_order as f32;
-                continue;
-            }
-            if effective_order == 0 {
-                avg_prec = 0.0;
-                avg_rec = 0.0;
-            } else {
-                avg_prec /= effective_order as f32;
-                avg_rec /= effective_order as f32;
-            }
-            if avg_prec + avg_rec > 0.0 {
-                score = (1.0 + factor) * avg_prec * avg_rec;
-                score /= (factor * avg_prec) + avg_rec;
-                metric_scores[j][k] = 100.0 * score;
-            }
-        }
-    }
+        });
     metric_scores
 }
 
@@ -165,40 +186,36 @@ fn chrf_aggregate_batched(
     hypotheses: Vec<Vec<String>>,
     references: Vec<Vec<String>>,
     char_order: usize,
-    beta: f32,
+    beta: f64,
     remove_whitespace: bool,
     eps_smoothing: bool,
-) -> Vec<Vec<f32>> {
-    let batch_size = hypotheses.len();
-    let num_hypotheses = hypotheses[0].len();
-    let metric_scores = Arc::new(Mutex::new(vec![vec![0.0; num_hypotheses]; batch_size]));
-    hypotheses.par_iter().enumerate().for_each(|(i, row)| {
-        let row_scores = chrf_aggregate(
-            row.to_vec(),
-            references[i].to_vec(),
-            char_order,
-            beta,
-            remove_whitespace,
-            eps_smoothing,
-        );
-        let mut scores = metric_scores.lock().unwrap();
-        scores[i] = row_scores;
-    });
-    Arc::try_unwrap(metric_scores).unwrap().into_inner().unwrap()
+) -> Vec<Vec<f64>> {
+    hypotheses
+        .par_iter()
+        .zip(references.par_iter())
+        .map(|(hypothesis_row, reference_row)| {
+            chrf_aggregate(
+                hypothesis_row,
+                reference_row,
+                char_order,
+                beta,
+                remove_whitespace,
+                eps_smoothing,
+            )
+        })
+        .collect()
 }
 
 
 fn chrf_aggregate(
-    hypotheses: Vec<String>,
-    references: Vec<String>,
+    hypotheses: &[String],
+    references: &[String],
     char_order: usize,
-    beta: f32,
+    beta: f64,
     remove_whitespace: bool,
     eps_smoothing: bool,
-) -> Vec<f32> {
-    let num_hypotheses = hypotheses.len();
+) -> Vec<f64> {
     let num_references = references.len() as u32;
-    let metric_scores = Arc::new(Mutex::new(vec![0.0; num_hypotheses]));
 
     // Extract ngrams for all references and sum up counts over all references
     let ngrams_for_all_references: Vec<HashMap<String, u32>> = references
@@ -215,13 +232,13 @@ fn chrf_aggregate(
 
     let eps = 1e-16;
     let factor = beta.powi(2);
-    hypotheses.par_iter().enumerate().for_each(|(j, _)| {
+    hypotheses.par_iter().map(|hypothesis| {
         let mut score = 0.0;
         let mut effective_order = 0;
         let mut avg_prec = 0.0;
         let mut avg_rec = 0.0;
         // Extract hypothesis ngrams and multiply counts by the number of references
-        let hyp_ngrams = extract_all_char_ngrams(&hypotheses[j], char_order, remove_whitespace)
+        let hyp_ngrams = extract_all_char_ngrams(hypothesis, char_order, remove_whitespace)
             .into_iter().map(|mut ngram_map| {
                 for value in ngram_map.values_mut() {
                     *value *= num_references;
@@ -230,10 +247,10 @@ fn chrf_aggregate(
             }).collect::<Vec<HashMap<String, u32>>>();
         for n in 0..char_order {
             let (n_hyp, n_ref, n_match) = get_match_statistics(&hyp_ngrams[n], &ngrams_for_all_references[n]);
-            let prec = n_match as f32 / n_hyp as f32;
-            let rec = n_match as f32 / n_ref as f32;
+            let prec = if n_hyp > 0 { n_match as f64 / n_hyp as f64 } else { eps };
+            let rec = if n_ref > 0 { n_match as f64 / n_ref as f64 } else { eps };
             let denom = factor * prec + rec;
-            score += ((1.0 + factor) * prec * rec / denom).max(eps);
+            score += if denom > 0.0 { (1.0 + factor) * prec * rec / denom } else { eps };
             if n_hyp > 0 && n_ref > 0 {
                 avg_prec += prec;
                 avg_rec += rec;
@@ -241,25 +258,23 @@ fn chrf_aggregate(
             }
         }
         if eps_smoothing {
-            let mut scores = metric_scores.lock().unwrap();
-            scores[j] = 100.0 * score / char_order as f32;
-            return;
+            return 100.0 * score / char_order as f64;
         }
         if effective_order == 0 {
             avg_prec = 0.0;
             avg_rec = 0.0;
         } else {
-            avg_prec /= effective_order as f32;
-            avg_rec /= effective_order as f32;
+            avg_prec /= effective_order as f64;
+            avg_rec /= effective_order as f64;
         }
         if avg_prec + avg_rec > 0.0 {
             score = (1.0 + factor) * avg_prec * avg_rec;
             score /= (factor * avg_prec) + avg_rec;
-            let mut scores = metric_scores.lock().unwrap();
-            scores[j] = 100.0 * score;
+            100.0 * score
+        } else {
+            0.0
         }
-    });
-    Arc::try_unwrap(metric_scores).unwrap().into_inner().unwrap()
+    }).collect()
 }
 
 
