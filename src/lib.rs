@@ -27,10 +27,10 @@ fn pairwise_chrf_py(
     hypotheses: Vec<Vec<String>>,
     references: Vec<Vec<String>>,
     char_order: usize,
-    beta: f32,
+    beta: f64,
     remove_whitespace: bool,
     eps_smoothing: bool,
-) -> PyResult<Vec<Vec<Vec<f32>>>> {
+) -> PyResult<Vec<Vec<Vec<f64>>>> {
     validate_batch(&hypotheses, &references)?;
     // The batch is already copied into owned Rust values and the worker threads
     // never touch Python, so hold no GIL while scoring: a large call would
@@ -63,10 +63,10 @@ fn aggregate_chrf_py(
     hypotheses: Vec<Vec<String>>,
     references: Vec<Vec<String>>,
     char_order: usize,
-    beta: f32,
+    beta: f64,
     remove_whitespace: bool,
     eps_smoothing: bool,
-) -> PyResult<Vec<Vec<f32>>> {
+) -> PyResult<Vec<Vec<f64>>> {
     validate_batch(&hypotheses, &references)?;
     // The batch is already copied into owned Rust values and the worker threads
     // never touch Python, so hold no GIL while scoring: a large call would
@@ -101,10 +101,10 @@ fn chrf_pairwise_batched(
     hypotheses: Vec<Vec<String>>,
     references: Vec<Vec<String>>,
     char_order: usize,
-    beta: f32,
+    beta: f64,
     remove_whitespace: bool,
     eps_smoothing: bool,
-) -> Vec<Vec<Vec<f32>>> {
+) -> Vec<Vec<Vec<f64>>> {
     hypotheses
         .par_iter()
         .zip(references.par_iter())
@@ -126,10 +126,10 @@ fn chrf_pairwise(
     hypotheses: &[String],
     references: &[String],
     char_order: usize,
-    beta: f32,
+    beta: f64,
     remove_whitespace: bool,
     eps_smoothing: bool,
-) -> Vec<Vec<f32>> {
+) -> Vec<Vec<f64>> {
     let num_hypotheses = hypotheses.len();
     let num_references = references.len();
     let mut metric_scores = vec![vec![0.0; num_references]; num_hypotheses];
@@ -156,8 +156,8 @@ fn chrf_pairwise(
                 let mut avg_rec = 0.0;
                 for n in 0..char_order {
                     let (n_hyp, n_ref, n_match) = get_match_statistics(&hyp_ngrams[n], &ref_ngrams[n]);
-                    let prec = n_match as f32 / n_hyp as f32;
-                    let rec = n_match as f32 / n_ref as f32;
+                    let prec = n_match as f64 / n_hyp as f64;
+                    let rec = n_match as f64 / n_ref as f64;
                     let denom = factor * prec + rec;
                     score += ((1.0 + factor) * prec * rec / denom).max(eps);
                     if n_hyp > 0 && n_ref > 0 {
@@ -167,15 +167,15 @@ fn chrf_pairwise(
                     }
                 }
                 if eps_smoothing {
-                    *score_out = 100.0 * score / char_order as f32;
+                    *score_out = 100.0 * score / char_order as f64;
                     continue;
                 }
                 if effective_order == 0 {
                     avg_prec = 0.0;
                     avg_rec = 0.0;
                 } else {
-                    avg_prec /= effective_order as f32;
-                    avg_rec /= effective_order as f32;
+                    avg_prec /= effective_order as f64;
+                    avg_rec /= effective_order as f64;
                 }
                 if avg_prec + avg_rec > 0.0 {
                     score = (1.0 + factor) * avg_prec * avg_rec;
@@ -192,10 +192,10 @@ fn chrf_aggregate_batched(
     hypotheses: Vec<Vec<String>>,
     references: Vec<Vec<String>>,
     char_order: usize,
-    beta: f32,
+    beta: f64,
     remove_whitespace: bool,
     eps_smoothing: bool,
-) -> Vec<Vec<f32>> {
+) -> Vec<Vec<f64>> {
     hypotheses
         .par_iter()
         .zip(references.par_iter())
@@ -217,10 +217,10 @@ fn chrf_aggregate(
     hypotheses: &[String],
     references: &[String],
     char_order: usize,
-    beta: f32,
+    beta: f64,
     remove_whitespace: bool,
     eps_smoothing: bool,
-) -> Vec<f32> {
+) -> Vec<f64> {
     let num_references = references.len() as u32;
 
     // Extract ngrams for all references and sum up counts over all references
@@ -253,8 +253,8 @@ fn chrf_aggregate(
             }).collect::<Vec<HashMap<String, u32>>>();
         for n in 0..char_order {
             let (n_hyp, n_ref, n_match) = get_match_statistics(&hyp_ngrams[n], &ngrams_for_all_references[n]);
-            let prec = n_match as f32 / n_hyp as f32;
-            let rec = n_match as f32 / n_ref as f32;
+            let prec = n_match as f64 / n_hyp as f64;
+            let rec = n_match as f64 / n_ref as f64;
             let denom = factor * prec + rec;
             score += ((1.0 + factor) * prec * rec / denom).max(eps);
             if n_hyp > 0 && n_ref > 0 {
@@ -264,14 +264,14 @@ fn chrf_aggregate(
             }
         }
         if eps_smoothing {
-            return 100.0 * score / char_order as f32;
+            return 100.0 * score / char_order as f64;
         }
         if effective_order == 0 {
             avg_prec = 0.0;
             avg_rec = 0.0;
         } else {
-            avg_prec /= effective_order as f32;
-            avg_rec /= effective_order as f32;
+            avg_prec /= effective_order as f64;
+            avg_rec /= effective_order as f64;
         }
         if avg_prec + avg_rec > 0.0 {
             score = (1.0 + factor) * avg_prec * avg_rec;
