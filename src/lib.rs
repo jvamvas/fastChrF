@@ -31,9 +31,7 @@ fn pairwise_chrf_py(
     remove_whitespace: bool,
     eps_smoothing: bool,
 ) -> PyResult<Vec<Vec<Vec<f32>>>> {
-    if hypotheses.len() == 0 || references.len() == 0 {
-        return Err(pyo3::exceptions::PyValueError::new_err("hypotheses and references must be non-empty"));
-    }
+    validate_batch(&hypotheses, &references)?;
     Ok(chrf_pairwise_batched(hypotheses, references, char_order, beta, remove_whitespace, eps_smoothing))
 }
 
@@ -65,10 +63,30 @@ fn aggregate_chrf_py(
     remove_whitespace: bool,
     eps_smoothing: bool,
 ) -> PyResult<Vec<Vec<f32>>> {
-    if hypotheses.len() == 0 || references.len() == 0 {
-        return Err(pyo3::exceptions::PyValueError::new_err("hypotheses and references must be non-empty"));
-    }
+    validate_batch(&hypotheses, &references)?;
     Ok(chrf_aggregate_batched(hypotheses, references, char_order, beta, remove_whitespace, eps_smoothing))
+}
+
+
+/// Checks the batch dimensions that both entry points rely on.
+///
+/// `chrf_*_batched` iterate over the hypothesis rows and index `references` with
+/// the same offset, so a shorter `references` would panic and a longer one would
+/// be silently truncated. Reject both here instead.
+fn validate_batch(hypotheses: &[Vec<String>], references: &[Vec<String>]) -> PyResult<()> {
+    if hypotheses.is_empty() || references.is_empty() {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "hypotheses and references must be non-empty",
+        ));
+    }
+    if hypotheses.len() != references.len() {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "hypotheses and references must have the same batch size, but got {} and {}",
+            hypotheses.len(),
+            references.len(),
+        )));
+    }
+    Ok(())
 }
 
 
