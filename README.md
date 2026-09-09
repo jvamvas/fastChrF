@@ -86,7 +86,7 @@ def aggregate_chrf(hypotheses: List[List[str]], references: List[List[str]], cha
     :param beta: A float indicating the beta parameter of the F-score. Defaults to 2.0.
     :param remove_whitespace: If `True`, remove whitespace when extracting character n-grams. Defaults to `True`.
     :param eps_smoothing: If `True`, add epsilon smoothing to the ChrF score. Defaults to `False`.
-    :return: A list of lists of lists of floats.
+    :return: A list of lists of floats.
     """
 ```
 
